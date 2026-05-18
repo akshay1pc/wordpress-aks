@@ -1,0 +1,78 @@
+name: AKS Deploy
+
+on:
+  push:
+    branches:
+      - main
+permissions:
+  id-token: write
+  contents: read
+
+env:
+  ACR_NAME: wordpresslearningacr123
+  IMAGE_NAME: wordpress-custom
+  RESOURCE_GROUP: Devops-POC-Akshay
+  AKS_CLUSTER: wordpress-learning-aks
+
+jobs:
+
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+
+    # Checkout repo
+    - name: Checkout
+      uses: actions/checkout@v4
+
+    # Azure Login
+    - name: Azure Login
+      uses: azure/login@v2
+      with:
+        client-id: ${{ secrets.AZURE_CLIENT_ID }}
+        # client-secret: ${{ secrets.AZURE_CLIENT_SECRET }}
+        tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+        subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+    # Terraform Install
+    - name: Setup Terraform
+      uses: hashicorp/setup-terraform@v3
+
+    # Terraform Validate
+    - name: Terraform Init
+      run: terraform init
+      working-directory: environments/dev
+
+    - name: Terraform Validate
+      run: terraform validate
+      working-directory: environments/dev
+
+    # ACR Login
+    - name: ACR Login
+      run: az acr login --name $ACR_NAME
+
+    # Docker Build
+    - name: Build Docker Image
+      run: |
+        docker build -t $ACR_NAME.azurecr.io/$IMAGE_NAME:${{ github.sha }} .
+
+    # Push Image
+    - name: Push Docker Image
+      run: |
+        docker push $ACR_NAME.azurecr.io/$IMAGE_NAME:${{ github.sha }}
+
+    # AKS Credentials
+    - name: Get AKS Credentials
+      run: |
+        az aks get-credentials \
+          --resource-group $RESOURCE_GROUP \
+          --name $AKS_CLUSTER \
+          --overwrite-existing
+
+    # Helm Deploy
+    - name: Helm Upgrade
+      run: |
+        helm upgrade --install wordpress bitnami/wordpress \
+          --set image.registry=$ACR_NAME.azurecr.io \
+          --set image.repository=$IMAGE_NAME \
+          --set image.tag=${{ github.sha }}
