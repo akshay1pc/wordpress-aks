@@ -51,6 +51,7 @@ jobs:
       run: |
         helm upgrade --install $HELM_RELEASE bitnami/wordpress \
           --namespace $NAMESPACE \
+          --set image.tag=invalid-tag-xyz-123 \
           --set global.security.allowInsecureImages=true \
           --set service.type=LoadBalancer
 
