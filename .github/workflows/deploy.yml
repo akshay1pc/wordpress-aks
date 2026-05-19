@@ -17,16 +17,17 @@ env:
 
 jobs:
 
+  # =========================
+  # 1. DEPLOY
+  # =========================
   deploy:
     runs-on: self-hosted
 
     steps:
 
-    # Checkout repo
     - name: Checkout
       uses: actions/checkout@v4
 
-    # Azure Login
     - name: Azure Login
       uses: azure/login@v2
       with:
@@ -34,7 +35,6 @@ jobs:
         tenant-id: ${{ secrets.AZURE_TENANT_ID }}
         subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
-    # Get AKS Credentials
     - name: Get AKS Credentials
       run: |
         az aks get-credentials \
@@ -42,23 +42,73 @@ jobs:
           --name $AKS_CLUSTER \
           --overwrite-existing
 
-    # Add Helm repo
     - name: Add Helm Repo
       run: |
         helm repo add bitnami https://charts.bitnami.com/bitnami
         helm repo update
 
-    # Helm Upgrade (MAIN DEPLOYMENT STEP)
-    - name: Helm Upgrade WordPress
+    - name: Helm Deploy
       run: |
         helm upgrade --install $HELM_RELEASE bitnami/wordpress \
           --namespace $NAMESPACE \
           --set global.security.allowInsecureImages=true \
-          --set wordpressBlogName="DevOps Blog" \
           --set service.type=LoadBalancer
 
-    # Verify rollout
-    - name: Check Pods
+    - name: Verify Deployment
       run: |
-        kubectl get pods -n $NAMESPACE
-        kubectl rollout status deployment/$HELM_RELEASE
+        kubectl rollout status deployment/$HELM_RELEASE -n $NAMESPACE
+
+
+  # =========================
+  # 2. FAILURE CHECK 
+  # =========================
+  detect-failure:
+    needs: deploy
+    if: failure()
+    runs-on: self-hosted
+
+    steps:
+      - name: Deployment Failed
+        run: echo "Deployment failed — waiting for approval for rollback"
+
+
+  # =========================
+  # 3. MANUAL APPROVAL
+  # =========================
+  approve-rollback:
+    needs: detect-failure
+    runs-on: self-hosted
+    environment:
+      name: rollback-approval  
+
+    steps:
+      - name: Wait for human approval
+        run: echo "Rollback approved"
+
+
+  # =========================
+  # 4. ROLLBACK
+  # =========================
+  rollback:
+    needs: approve-rollback
+    runs-on: self-hosted
+
+    steps:
+
+    - name: Azure Login
+      uses: azure/login@v2
+      with:
+        client-id: ${{ secrets.AZURE_CLIENT_ID }}
+        tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+        subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+    - name: Get AKS Credentials
+      run: |
+        az aks get-credentials \
+          --resource-group $RESOURCE_GROUP \
+          --name $AKS_CLUSTER \
+          --overwrite-existing
+
+    - name: Rollback WordPress
+      run: |
+        helm rollback $HELM_RELEASE -n $NAMESPACE
