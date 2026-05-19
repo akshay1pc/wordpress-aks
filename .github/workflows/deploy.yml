@@ -76,3 +76,4 @@ jobs:
           --set image.registry=$ACR_NAME.azurecr.io \
           --set image.repository=$IMAGE_NAME \
           --set image.tag=${{ github.sha }}
+          --set global.security.allowInsecureImages=true
