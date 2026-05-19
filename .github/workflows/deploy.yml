@@ -1,19 +1,19 @@
-name: AKS Deploy
+name: AKS WordPress Deploy
 
 on:
   push:
     branches:
-      - main
+      - dev
 
 permissions:
   id-token: write
   contents: read
 
 env:
-  ACR_NAME: wordpresslearningacr123
-  IMAGE_NAME: wordpress-custom
   RESOURCE_GROUP: Devops-POC-Akshay
   AKS_CLUSTER: wordpress-learning-aks
+  HELM_RELEASE: wordpress
+  NAMESPACE: default
 
 jobs:
 
@@ -34,29 +34,6 @@ jobs:
         tenant-id: ${{ secrets.AZURE_TENANT_ID }}
         subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
-    # Terraform Init (optional - keep only if you actually apply infra)
-    - name: Terraform Init
-      run: terraform init
-      working-directory: environments/dev
-
-    - name: Terraform Validate
-      run: terraform validate
-      working-directory: environments/dev
-
-    # ACR Login
-    - name: ACR Login
-      run: az acr login --name $ACR_NAME
-
-    # Build Docker Image
-    - name: Build Docker Image
-      run: |
-        docker build -t $ACR_NAME.azurecr.io/$IMAGE_NAME:${{ github.sha }} .
-
-    # Push Docker Image
-    - name: Push Docker Image
-      run: |
-        docker push $ACR_NAME.azurecr.io/$IMAGE_NAME:${{ github.sha }}
-
     # Get AKS Credentials
     - name: Get AKS Credentials
       run: |
@@ -65,17 +42,23 @@ jobs:
           --name $AKS_CLUSTER \
           --overwrite-existing
 
-    # Add Helm repo (IMPORTANT FIX)
+    # Add Helm repo
     - name: Add Helm Repo
       run: |
         helm repo add bitnami https://charts.bitnami.com/bitnami
         helm repo update
 
-    # Helm Deploy (FIXED)
-    - name: Helm Upgrade
+    # Helm Upgrade (MAIN DEPLOYMENT STEP)
+    - name: Helm Upgrade WordPress
       run: |
-        helm upgrade --install wordpress bitnami/wordpress \
-          --set image.registry=$ACR_NAME.azurecr.io \
-          --set image.repository=$IMAGE_NAME \
-          --set image.tag=${{ github.sha }} \
-          --set global.security.allowInsecureImages=true
+        helm upgrade --install $HELM_RELEASE bitnami/wordpress \
+          --namespace $NAMESPACE \
+          --set global.security.allowInsecureImages=true \
+          --set wordpressBlogName="DevOps Blog" \
+          --set service.type=LoadBalancer
+
+    # Verify rollout
+    - name: Check Pods
+      run: |
+        kubectl get pods -n $NAMESPACE
+        kubectl rollout status deployment/$HELM_RELEASE
