@@ -3,7 +3,7 @@ name: AKS WordPress Deploy
 on:
   push:
     branches:
-      - dev
+      - main
 
 permissions:
   id-token: write
