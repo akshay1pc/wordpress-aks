@@ -3,7 +3,7 @@ name: AKS Deploy
 on:
   push:
     branches:
-      - main
+      - dev
 permissions:
   id-token: write
   contents: read
