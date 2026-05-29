@@ -1,0 +1,10 @@
+mariadb:
+  enabled: true
+  auth:
+    rootPassword: "RootPassword123!"
+    database: "wordpress"
+    username: "wordpressuser"
+    password: "WordpressPassword123!"
+
+service:
+  type: LoadBalancer
